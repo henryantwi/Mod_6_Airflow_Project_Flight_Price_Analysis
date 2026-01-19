@@ -1,0 +1,109 @@
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.7.0
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow:5432/airflow
+    - AIRFLOW__CORE__FERNET_KEY=FB0o_zt4e3Ziq3LdUUO7F2Z95cvFFx16hU8jTeR1ASM=
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
+    - _PIP_ADDITIONAL_REQUIREMENTS=pandas pymysql psycopg2-binary sqlalchemy
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
+    - ./data:/opt/airflow/data
+  depends_on:
+    postgres_airflow:
+      condition: service_healthy
+    mysql:
+      condition: service_healthy
+    postgres_analytics:
+      condition: service_healthy
+
+services:
+  # Airflow's metadata database
+  postgres_airflow:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U airflow" ]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+
+  # Staging Database (MySQL)
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=staging
+      - MYSQL_USER=staging_user
+      - MYSQL_PASSWORD=staging_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/mysql_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 5s
+      retries: 10
+      start_period: 30s
+
+  # Analytics Database (PostgreSQL)
+  postgres_analytics:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=analytics_user
+      - POSTGRES_PASSWORD=analytics_password
+      - POSTGRES_DB=analytics
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_analytics_data:/var/lib/postgresql/data
+      - ./sql/postgres_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U analytics_user -d analytics" ]
+      interval: 5s
+      retries: 5
+      start_period: 10s
+
+  # Airflow Webserver
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+
+  # Airflow Init (one-time setup)
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command: >
+      -c "
+        airflow db init &&
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true
+      "
+    restart: "no"
+
+volumes:
+  postgres_airflow_data:
+  mysql_data:
+  postgres_analytics_data:
