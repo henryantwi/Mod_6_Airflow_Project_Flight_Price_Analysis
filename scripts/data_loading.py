@@ -1,7 +1,3 @@
-"""
-Data Loading Script
-Transfers validated data from MySQL to PostgreSQL
-"""
 import pandas as pd
 from sqlalchemy import create_engine
 

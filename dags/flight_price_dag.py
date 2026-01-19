@@ -1,10 +1,3 @@
-"""
-Flight Price Analysis DAG
-End-to-end data pipeline for Bangladesh flight price analysis
-
-Author: Data Engineering Student
-Date: 2024
-"""
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator

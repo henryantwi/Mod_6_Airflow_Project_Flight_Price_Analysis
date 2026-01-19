@@ -1,7 +1,3 @@
-"""
-Data Transformation Script
-Computes KPIs from validated data
-"""
 import pandas as pd
 from sqlalchemy import create_engine
 

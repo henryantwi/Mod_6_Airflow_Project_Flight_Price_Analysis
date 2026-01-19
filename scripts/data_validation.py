@@ -1,7 +1,3 @@
-"""
-Data Validation Script
-Validates and cleans the staging data
-"""
 import pandas as pd
 from sqlalchemy import create_engine
 

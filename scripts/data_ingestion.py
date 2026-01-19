@@ -1,11 +1,6 @@
-"""
-Data Ingestion Script
-Loads CSV data into MySQL staging table
-"""
 import pandas as pd
 from sqlalchemy import create_engine
 import os
-
 
 def ingest_csv_to_mysql():
     """Load flight price CSV into MySQL staging database."""
