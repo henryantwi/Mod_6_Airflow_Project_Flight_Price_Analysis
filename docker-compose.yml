@@ -6,13 +6,14 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__FERNET_KEY=FB0o_zt4e3Ziq3LdUUO7F2Z95cvFFx16hU8jTeR1ASM=
     - AIRFLOW__CORE__LOAD_EXAMPLES=False
     - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
-    - _PIP_ADDITIONAL_REQUIREMENTS=pandas pymysql psycopg2-binary sqlalchemy
+    - _PIP_ADDITIONAL_REQUIREMENTS=pandas pymysql psycopg2-binary sqlalchemy dbt-postgres
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./scripts:/opt/airflow/scripts
     - ./data:/opt/airflow/data
+    - ./dbt_flight_analytics:/opt/airflow/dbt_flight_analytics
   depends_on:
     postgres_airflow:
       condition: service_healthy

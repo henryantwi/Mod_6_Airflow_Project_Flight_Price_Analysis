@@ -1,0 +1,33 @@
+-- Source definition for raw flight data synced from MySQL
+version: 2
+
+sources:
+  - name: raw
+    description: Raw flight price data synced from MySQL staging database
+    schema: public
+    tables:
+      - name: flight_prices_raw
+        description: Raw flight price records from CSV ingestion
+        columns:
+          - name: airline
+            description: Name of the airline
+          - name: source
+            description: Source airport code
+          - name: source_name
+            description: Source city name
+          - name: destination
+            description: Destination airport code
+          - name: destination_name
+            description: Destination city name
+          - name: base_fare_bdt
+            description: Base fare in Bangladeshi Taka
+          - name: tax_surcharge_bdt
+            description: Tax and surcharge amount
+          - name: total_fare_bdt
+            description: Total fare amount
+          - name: class
+            description: Travel class (Economy, Business, First Class)
+          - name: duration_hrs
+            description: Flight duration in hours
+          - name: seasonality
+            description: Season category for the booking

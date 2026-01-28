@@ -1,0 +1,12 @@
+flight_analytics:
+  target: prod
+  outputs:
+    prod:
+      type: postgres
+      host: postgres_analytics
+      port: 5432
+      user: analytics_user
+      password: analytics_password
+      dbname: analytics
+      schema: public
+      threads: 4

@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  # Staging model
+  - name: stg_flight_prices
+    description: Validated and cleaned flight price data
+    columns:
+      - name: airline
+        description: Name of the airline
+        tests:
+          - not_null
+      - name: source
+        description: Source airport code
+        tests:
+          - not_null
+      - name: destination
+        description: Destination airport code
+        tests:
+          - not_null
+      - name: base_fare_bdt
+        description: Base fare in Bangladeshi Taka
+        tests:
+          - not_null
+      - name: total_fare_bdt
+        description: Total fare amount
+        tests:
+          - not_null
+      - name: class
+        description: Travel class
+        tests:
+          - accepted_values:
+              values: ['Economy', 'Business', 'First Class']
+
+  # KPI models
+  - name: kpi_avg_fare_by_airline
+    description: Average fare metrics by airline
+    columns:
+      - name: airline
+        tests:
+          - unique
+          - not_null
+
+  - name: kpi_seasonal_variation
+    description: Fare analysis by season and peak period
+
+  - name: kpi_popular_routes
+    description: Top 20 most popular flight routes
+
+  - name: kpi_booking_count_by_airline
+    description: Booking counts by airline with class breakdown
+    columns:
+      - name: airline
+        tests:
+          - unique
+          - not_null
