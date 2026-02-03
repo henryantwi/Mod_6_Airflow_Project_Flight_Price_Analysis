@@ -6,7 +6,14 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__FERNET_KEY=FB0o_zt4e3Ziq3LdUUO7F2Z95cvFFx16hU8jTeR1ASM=
     - AIRFLOW__CORE__LOAD_EXAMPLES=False
     - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
-    - _PIP_ADDITIONAL_REQUIREMENTS=pandas pymysql psycopg2-binary sqlalchemy
+    # Scheduler performance tuning - reduces task queue wait time
+    - AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL=5
+    - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL=10
+    - AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC=5
+    - AIRFLOW__CORE__PARALLELISM=16
+    - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=8
+    - AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG=2
+    - _PIP_ADDITIONAL_REQUIREMENTS=pandas numpy pymysql psycopg2-binary sqlalchemy
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -80,6 +87,15 @@ services:
     command: webserver
     ports:
       - "8080:8080"
+    environment:
+      # Inherit all common environment variables
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=FB0o_zt4e3Ziq3LdUUO7F2Z95cvFFx16hU8jTeR1ASM=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
+      # Auto-refresh settings
+      - AIRFLOW__WEBSERVER__AUTO_REFRESH_INTERVAL=5
     healthcheck:
       test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
       interval: 10s

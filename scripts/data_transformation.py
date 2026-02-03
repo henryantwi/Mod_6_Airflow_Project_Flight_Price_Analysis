@@ -1,5 +1,9 @@
 import pandas as pd
 from sqlalchemy import create_engine
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 def compute_kpis():
@@ -14,12 +18,12 @@ def compute_kpis():
     )
     
     # Read validated data
-    print("Reading validated data...")
+    logger.info("Reading validated data...")
     df = pd.read_sql("SELECT * FROM flight_prices_validated", mysql_engine)
-    print(f"Loaded {len(df)} rows for KPI computation")
+    logger.info(f"Loaded {len(df)} rows for KPI computation")
     
     # ===== KPI 1: Average Fare by Airline =====
-    print("\nComputing KPI: Average Fare by Airline...")
+    logger.info("Computing KPI: Average Fare by Airline...")
     kpi_airline = df.groupby('airline').agg({
         'base_fare_bdt': 'mean',
         'tax_surcharge_bdt': 'mean',
@@ -37,20 +41,20 @@ def compute_kpis():
     })
     
     kpi_airline.to_sql('kpi_avg_fare_by_airline', pg_engine, if_exists='replace', index=False)
-    print(f"  ✓ Computed for {len(kpi_airline)} airlines")
+    logger.info(f"Computed Average Fare for {len(kpi_airline)} airlines")
     
     # ===== KPI 2: Seasonal Fare Variation =====
-    print("\nComputing KPI: Seasonal Fare Variation...")
+    logger.info("Computing KPI: Seasonal Fare Variation...")
     kpi_seasonal = df.groupby(['seasonality', 'is_peak_season']).agg({
         'total_fare_bdt': ['mean', 'min', 'max', 'count']
     }).reset_index()
     kpi_seasonal.columns = ['seasonality', 'is_peak_season', 'avg_total_fare', 'min_fare', 'max_fare', 'booking_count']
     
     kpi_seasonal.to_sql('kpi_seasonal_variation', pg_engine, if_exists='replace', index=False)
-    print(f"  ✓ Computed for {len(kpi_seasonal)} seasons")
+    logger.info(f"Computed Seasonal Variation for {len(kpi_seasonal)} seasons")
     
     # ===== KPI 3: Popular Routes =====
-    print("\nComputing KPI: Popular Routes...")
+    logger.info("Computing KPI: Popular Routes...")
     kpi_routes = df.groupby(['source', 'source_name', 'destination', 'destination_name']).agg({
         'total_fare_bdt': ['count', 'mean']
     }).reset_index()
@@ -59,10 +63,10 @@ def compute_kpis():
     kpi_routes = kpi_routes.nlargest(20, 'booking_count')
     
     kpi_routes.to_sql('kpi_popular_routes', pg_engine, if_exists='replace', index=False)
-    print(f"  ✓ Computed top {len(kpi_routes)} routes")
+    logger.info(f"Computed top {len(kpi_routes)} popular routes")
     
     # ===== KPI 4: Booking Count by Airline =====
-    print("\nComputing KPI: Booking Count by Airline...")
+    logger.info("Computing KPI: Booking Count by Airline...")
     
     # Group by airline and compute class-based booking counts
     kpi_bookings = df.groupby('airline').agg(
@@ -82,11 +86,12 @@ def compute_kpis():
     kpi_bookings = kpi_bookings.fillna(0)
     
     kpi_bookings.to_sql('kpi_booking_count_by_airline', pg_engine, if_exists='replace', index=False)
-    print(f"  ✓ Computed for {len(kpi_bookings)} airlines")
+    logger.info(f"Computed Booking Count for {len(kpi_bookings)} airlines")
     
-    print("\n✓ All KPIs computed and saved to PostgreSQL!")
+    logger.info("All KPIs computed and saved to PostgreSQL!")
     return True
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     compute_kpis()

@@ -1,5 +1,9 @@
 import pandas as pd
 from sqlalchemy import create_engine
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 def load_to_postgres():
@@ -14,16 +18,16 @@ def load_to_postgres():
     )
     
     # Read validated data from MySQL
-    print("Reading validated data from MySQL...")
+    logger.info("Reading validated data from MySQL...")
     df = pd.read_sql("SELECT * FROM flight_prices_validated", mysql_engine)
-    print(f"Loaded {len(df)} rows")
+    logger.info(f"Loaded {len(df)} rows")
     
     # Load to PostgreSQL (excluding MySQL auto-increment id and validated_at)
     columns_to_exclude = ['id', 'validated_at']
     columns_to_load = [col for col in df.columns if col not in columns_to_exclude]
     df_to_load = df[columns_to_load]
     
-    print("Loading data to PostgreSQL...")
+    logger.info("Loading data to PostgreSQL...")
     df_to_load.to_sql(
         'flight_prices',
         pg_engine,
@@ -32,9 +36,10 @@ def load_to_postgres():
         chunksize=5000
     )
     
-    print(f"✓ Successfully loaded {len(df_to_load)} rows to PostgreSQL analytics database")
+    logger.info(f"Successfully loaded {len(df_to_load)} rows to PostgreSQL analytics database")
     return len(df_to_load)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     load_to_postgres()

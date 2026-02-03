@@ -1,22 +1,43 @@
 import pandas as pd
 from sqlalchemy import create_engine
+import logging
+import glob
 import os
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
 def ingest_csv_to_mysql():
-    """Load flight price CSV into MySQL staging database."""
+    """Load all CSV files from data directory into MySQL staging database."""
     
     # Configuration
-    csv_path = '/opt/airflow/data/Flight_Price_Dataset_of_Bangladesh.csv'
+    data_directory = '/opt/airflow/data'
     mysql_host = 'mysql'
     mysql_user = 'staging_user'
     mysql_password = 'staging_password'
     mysql_database = 'staging'
     
-    print(f"Reading CSV from: {csv_path}")
+    # Find all CSV files in the data directory
+    csv_pattern = os.path.join(data_directory, '*.csv')
+    csv_files = glob.glob(csv_pattern)
     
-    # Read CSV
-    df = pd.read_csv(csv_path)
-    print(f"Loaded {len(df)} rows from CSV")
+    if not csv_files:
+        logger.warning(f"No CSV files found in {data_directory}")
+        return 0
+    
+    logger.info(f"Found {len(csv_files)} CSV file(s) in {data_directory}")
+    
+    # Read and combine all CSV files
+    dataframes = []
+    for csv_path in csv_files:
+        logger.info(f"Reading CSV: {os.path.basename(csv_path)}")
+        df = pd.read_csv(csv_path)
+        logger.info(f"  - Loaded {len(df)} rows")
+        dataframes.append(df)
+    
+    # Combine all dataframes
+    df = pd.concat(dataframes, ignore_index=True)
+    logger.info(f"Total rows from all files: {len(df)}")
     
     # Rename columns to match database schema
     column_mapping = {
@@ -57,9 +78,10 @@ def ingest_csv_to_mysql():
         chunksize=5000
     )
     
-    print(f"Successfully loaded {len(df)} rows into MySQL staging table")
+    logger.info(f"Successfully loaded {len(df)} rows into MySQL staging table")
     return len(df)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     ingest_csv_to_mysql()
