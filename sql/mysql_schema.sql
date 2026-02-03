@@ -1,9 +1,10 @@
 -- MySQL Staging Database Schema
 USE staging;
 
--- Raw flight prices table (matches CSV structure)
+-- Raw flight prices table (matches CSV structure with UPSERT support)
 CREATE TABLE IF NOT EXISTS flight_prices_raw (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    record_hash VARCHAR(64) NOT NULL,
     airline VARCHAR(100),
     source VARCHAR(10),
     source_name VARCHAR(200),
@@ -21,7 +22,9 @@ CREATE TABLE IF NOT EXISTS flight_prices_raw (
     total_fare_bdt DECIMAL(15, 2),
     seasonality VARCHAR(50),
     days_before_departure INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_record (record_hash)
 );
 
 -- Validated flight prices table
