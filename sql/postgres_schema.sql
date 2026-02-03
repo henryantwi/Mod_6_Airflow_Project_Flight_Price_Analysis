@@ -3,6 +3,7 @@
 -- Processed flight data
 CREATE TABLE IF NOT EXISTS flight_prices (
     id SERIAL PRIMARY KEY,
+    record_hash VARCHAR(64) UNIQUE,
     airline VARCHAR(100) NOT NULL,
     source VARCHAR(10) NOT NULL,
     source_name VARCHAR(200),

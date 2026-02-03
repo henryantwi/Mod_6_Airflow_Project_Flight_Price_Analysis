@@ -1,205 +1,122 @@
-# Flight Price Analysis Pipeline Report
+# Flight Price Analysis Pipeline
 
-## 1. Overview
+## Overview
+This pipeline processes flight price data from Bangladesh through Airflow. Raw CSV data flows through MySQL staging tables before landing in PostgreSQL for analytics.
 
-This document provides a comprehensive report on the Flight Price Analysis data pipeline built using Apache Airflow. The pipeline processes flight price data from Bangladesh to compute key business metrics.
+The pipeline uses hash-based duplicate detection to avoid reprocessing the same records. If no new data is found, it skips the validation/transformation steps and sends a notification email instead.
 
----
-
-## 2. Pipeline Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    A["📄 CSV File<br/>57,000+ rows"] --> B["🐬 MySQL<br/>(Staging)"]
-    B --> C["✅ Validation"]
-    C --> D["🔄 Transform<br/>& KPIs"]
-    D --> E["🐘 PostgreSQL<br/>(Analytics)"]
+    CSV["CSV File Source<br/>(Kaggle)"] --> INGEST["Ingestion<br/>(Python/SQLAlchemy)"]
+    INGEST --> MYSQL_RAW["MySQL Staging<br/>(flight_prices_raw)"]
+    MYSQL_RAW --> VALIDATE["Validation & Cleaning<br/>(Pandas)"]
+    VALIDATE --> MYSQL_VAL["MySQL Validated<br/>(flight_prices_validated)"]
+    MYSQL_VAL --> TRANSFORM["KPI Transformation<br/>(Pandas)"]
+    MYSQL_VAL --> LOAD["PostgreSQL Load<br/>(Analytics)"]
+    TRANSFORM --> PG_KPI["PostgreSQL KPIs<br/>(4 KPI Tables)"]
+    LOAD --> PG_FINAL["PostgreSQL Data<br/>(flight_prices)"]
     
-    style A fill:#e1f5fe
-    style B fill:#fff3e0
-    style C fill:#e8f5e9
-    style D fill:#f3e5f5
-    style E fill:#e3f2fd
+    subgraph Airflow["Airflow Orchestration"]
+        INGEST
+        VALIDATE
+        TRANSFORM
+        LOAD
+    end
 ```
 
-### Technology Stack
+## Tech Stack
+- Airflow for orchestration
+- MySQL 8.0 for staging
+- PostgreSQL 13 for analytics
+- Python/Pandas for processing
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Orchestration | Apache Airflow 2.7.0 | Workflow scheduling and monitoring |
-| Staging Database | MySQL 8.0 | Store raw and validated data |
-| Analytics Database | PostgreSQL 13 | Store processed data and KPIs |
-| Processing | Python 3 + Pandas | Data manipulation and KPI computation |
+## DAG Tasks
 
----
+**DAG:** `flight_price_analysis` (manual trigger only, no schedule)
 
-## 3. DAG/Task Descriptions
+The DAG uses branching to optimize performance:
 
-### Airflow DAG: `flight_price_analysis`
+**Flow with new data:**
+`start` → `ingest_csv_to_mysql` → `check_for_new_data` → `validate_data` → `compute_kpis` → `load_to_postgres` → `notify_success` → `end`
 
-```
-start → ingest_csv_to_mysql → validate_data → compute_kpis → load_to_postgres → end
-```
+**Flow with no new data:**
+`start` → `ingest_csv_to_mysql` → `check_for_new_data` → `notify_no_change` → `end`
 
-| Task ID | Description | Input | Output |
-|---------|-------------|-------|--------|
-| `ingest_csv_to_mysql` | Loads raw CSV data into MySQL staging | CSV file | `flight_prices_raw` table |
-| `validate_data` | Validates columns, handles nulls, checks consistency | Raw table | `flight_prices_validated` table |
-| `compute_kpis` | Calculates 4 business KPIs | Validated table | 4 KPI tables in PostgreSQL |
-| `load_to_postgres` | Transfers clean data to analytics DB | Validated table | `flight_prices` table in PostgreSQL |
+### Task Details
 
----
+1. **ingest_csv_to_mysql** 
+   - Generates SHA-256 hash for each record (airline + source + destination + datetime + class + booking_source)
+   - Compares against existing hashes in MySQL
+   - Only inserts truly new records (UPSERT with ON DUPLICATE KEY)
+   - Returns count of inserted rows via XCom
 
-## 4. KPI Definitions and Computation Logic
+2. **check_for_new_data** (BranchPythonOperator)
+   - Pulls row count from ingestion task
+   - Branches to `validate_data` if count > 0
+   - Branches to `notify_no_change` if count = 0
 
-### KPI 1: Average Fare by Airline
+3. **validate_data** - Cleans data, handles nulls, removes bad records
 
-**Purpose:** Compare pricing strategies across different airlines
+4. **compute_kpis** - Calculates 4 KPIs and loads to PostgreSQL
 
-**Formula:**
-```sql
-SELECT 
-    airline,
-    AVG(base_fare_bdt) as avg_base_fare,
-    AVG(tax_surcharge_bdt) as avg_tax_surcharge,
-    AVG(total_fare_bdt) as avg_total_fare,
-    COUNT(*) as booking_count
-FROM flight_prices_validated
-GROUP BY airline
-```
+5. **load_to_postgres** - Moves cleaned data from MySQL to PostgreSQL
 
-**Business Value:** Identifies premium vs budget carriers
+6. **notify_success** - Sends email when new data is processed
 
----
+7. **notify_no_change** - Sends email when no new data found
 
-### KPI 2: Seasonal Fare Variation
+## KPIs Calculated
 
-**Purpose:** Understand price fluctuations during peak travel seasons
+**Average Fare by Airline** (`kpi_avg_fare_by_airline`)
+- Groups by airline and averages base fare, tax, and total fare
 
-**Peak Seasons Defined:**
-- Eid (Eid-ul-Fitr and Eid-ul-Adha)
-- Winter Holidays (December - January)
-- Hajj season
+**Seasonal Variation** (`kpi_seasonal_variation`)
+- Compares fares between peak seasons (Eid, Winter, Hajj) and regular periods
+- Shows avg, min, max fares
 
-**Formula:**
-```sql
-SELECT 
-    seasonality,
-    is_peak_season,
-    AVG(total_fare_bdt) as avg_fare,
-    MIN(total_fare_bdt) as min_fare,
-    MAX(total_fare_bdt) as max_fare,
-    COUNT(*) as booking_count
-FROM flight_prices_validated
-GROUP BY seasonality, is_peak_season
-```
+**Popular Routes** (`kpi_popular_routes`)
+- Top 20 routes by booking count
+- Includes source/destination codes and names
 
-**Business Value:** Enables dynamic pricing strategies
+**Bookings by Airline** (`kpi_booking_count_by_airline`)
+- Total bookings per airline
+- Breakdown by Economy, Business, First Class
 
----
+## Validation Rules
 
-### KPI 3: Popular Routes
+- Generates SHA-256 hash from key fields to identify duplicates
+- Drops rows missing airline, source, or destination
+- Fills missing fare values with 0
+- Recalculates total_fare if missing: `base_fare + tax_surcharge`
+- Removes negative fares and invalid records where `total_fare < base_fare`
 
-**Purpose:** Identify highest-demand source-destination pairs
+## Issues Encountered
 
-**Formula:**
-```sql
-SELECT 
-    source,
-    destination,
-    COUNT(*) as booking_count,
-    AVG(total_fare_bdt) as avg_fare
-FROM flight_prices_validated
-GROUP BY source, destination
-ORDER BY booking_count DESC
-LIMIT 20
-```
+**Avoiding duplicate processing** - Initially the pipeline would reprocess all CSV data every run. Added hash-based duplicate detection using SHA-256 of key fields. Now only new records trigger the full pipeline.
 
-**Business Value:** Guides route expansion and capacity planning
+**Wasted processing on unchanged data** - Added branching logic so the DAG skips validation/transformation/loading if ingestion finds zero new records.
 
----
+**Missing total fares** - Some records had base and tax but no total. Fixed by adding them together in validation.
 
-### KPI 4: Booking Count by Airline
+**Cross-database transfers** - Used SQLAlchemy to read from MySQL and write to PostgreSQL with Pandas dataframes.
 
-**Purpose:** Analyze market share and class distribution
+**Email notifications** - Added email alerts for both success and no-change scenarios. Configured via environment variable `TO_USER_EMAIL_1`.
 
-**Formula:**
-```sql
-SELECT 
-    airline,
-    COUNT(*) as total_bookings,
-    SUM(CASE WHEN class = 'Economy' THEN 1 ELSE 0 END) as economy_bookings,
-    SUM(CASE WHEN class = 'Business' THEN 1 ELSE 0 END) as business_bookings,
-    SUM(CASE WHEN class = 'First Class' THEN 1 ELSE 0 END) as first_class_bookings
-FROM flight_prices_validated
-GROUP BY airline
-```
+## Running It
 
-**Business Value:** Competitive analysis and service planning
-
----
-
-## 5. Data Validation Rules
-
-| Check | Rule | Action on Failure |
-|-------|------|-------------------|
-| Required Columns | `airline`, `source`, `destination`, `base_fare_bdt`, `tax_surcharge_bdt`, `total_fare_bdt` must exist | Fail pipeline |
-| Null Handling | Drop rows with null airline/source/destination | Remove row |
-| Fare Validation | All fare values must be ≥ 0 | Remove row |
-| Consistency | `total_fare_bdt` ≥ `base_fare_bdt` | Remove row |
-| Type Validation | Fare columns must be numeric | Coerce or remove |
-
----
-
-## 6. Challenges and Solutions
-
-| Challenge | Solution |
-|-----------|----------|
-| **Large dataset (57K+ rows)** | Implemented chunked loading with 5000 rows per batch |
-| **Column name mismatches** | Created column mapping dictionary in ingestion script |
-| **Missing/null values** | Implemented smart handling: drop for required fields, fill for optional |
-| **Database connectivity** | Used SQLAlchemy for consistent database connections |
-| **Peak season detection** | Created lookup list of Bangladesh peak travel seasons |
-| **Data type inconsistencies** | Used `pd.to_numeric()` with `errors='coerce'` for safe conversion |
-
----
-
-## 7. How to Run the Pipeline
-
-### Step 1: Start Docker Services
 ```bash
 docker-compose up -d
 ```
 
-### Step 2: Access Airflow UI
-- URL: http://localhost:8080
-- Username: `admin`
-- Password: `admin`
-
-### Step 3: Trigger DAG
-1. Enable the `flight_price_analysis` DAG
-2. Click "Trigger DAG" button
-
-### Step 4: Verify Results
-```bash
-# Connect to PostgreSQL analytics database
-docker exec -it lab-3-postgres_analytics-1 psql -U analytics_user -d analytics
-
-# Check data
-SELECT COUNT(*) FROM flight_prices;
-SELECT * FROM kpi_avg_fare_by_airline LIMIT 5;
+Set email recipient in `.env`:
+```
+TO_USER_EMAIL_1=your.email@example.com
 ```
 
----
+Airflow UI: http://localhost:8080 (admin/admin)
 
-## 8. Future Improvements
+The DAG must be manually triggered (no automatic schedule).
 
-1. **Add data quality checks** using Great Expectations
-2. **Implement incremental loading** instead of full refresh
-3. **Add email alerts** for pipeline failures
-4. **Create dashboard** using Apache Superset or Metabase
-5. **Add more KPIs** like price prediction models
-
----
-
-*Report generated for Lab 3: Airflow Project - Flight Price Analysis*
+Check results in PostgreSQL analytics database.

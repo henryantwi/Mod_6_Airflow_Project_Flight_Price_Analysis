@@ -1,5 +1,7 @@
 x-airflow-common: &airflow-common
   image: apache/airflow:2.7.0
+  env_file:
+    - .env
   environment:
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres_airflow:5432/airflow
@@ -21,6 +23,8 @@ x-airflow-common: &airflow-common
     - AIRFLOW__SMTP__SMTP_USER=${SMTP_USER}
     - AIRFLOW__SMTP__SMTP_PASSWORD=${SMTP_PASSWORD}
     - AIRFLOW__SMTP__SMTP_MAIL_FROM=${SMTP_MAIL_FROM}
+    # Email recipient for DAG notifications
+    - TO_USER_EMAIL_1=${TO_USER_EMAIL_1}
     - _PIP_ADDITIONAL_REQUIREMENTS=pandas numpy pymysql psycopg2-binary sqlalchemy python-dotenv
   volumes:
     - ./dags:/opt/airflow/dags
