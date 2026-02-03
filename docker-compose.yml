@@ -13,7 +13,15 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__PARALLELISM=16
     - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=8
     - AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG=2
-    - _PIP_ADDITIONAL_REQUIREMENTS=pandas numpy pymysql psycopg2-binary sqlalchemy
+    # SMTP Email Configuration (loaded from .env file)
+    - AIRFLOW__SMTP__SMTP_HOST=smtp.gmail.com
+    - AIRFLOW__SMTP__SMTP_PORT=587
+    - AIRFLOW__SMTP__SMTP_STARTTLS=True
+    - AIRFLOW__SMTP__SMTP_SSL=False
+    - AIRFLOW__SMTP__SMTP_USER=${SMTP_USER}
+    - AIRFLOW__SMTP__SMTP_PASSWORD=${SMTP_PASSWORD}
+    - AIRFLOW__SMTP__SMTP_MAIL_FROM=${SMTP_MAIL_FROM}
+    - _PIP_ADDITIONAL_REQUIREMENTS=pandas numpy pymysql psycopg2-binary sqlalchemy python-dotenv
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs

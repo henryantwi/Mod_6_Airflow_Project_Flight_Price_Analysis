@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 def ingest_csv_to_mysql():
     """Load all CSV files from data directory into MySQL staging database."""
     
+    # ⚠️ TEST ERROR
+    # raise Exception("Intentional test error to verify email notifications work!")
+    
     # Configuration
     data_directory = '/opt/airflow/data'
     mysql_host = 'mysql'

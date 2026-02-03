@@ -16,10 +16,11 @@ from data_loading import load_to_postgres
 default_args = {
     'owner': 'data_engineer',
     'depends_on_past': False,
-    'email_on_failure': False,
+    'email': ['henry.antwi@amalitech.com'],
+    'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retry_delay': timedelta(minutes=1),
 }
 
 # Define the DAG
