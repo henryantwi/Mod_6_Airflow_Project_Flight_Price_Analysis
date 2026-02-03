@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.operators.email import EmailOperator
-from airflow.models.baseoperator import chain
 
 import sys
 sys.path.insert(0, '/opt/airflow/scripts')
@@ -35,14 +34,32 @@ default_args = {
     'retry_delay': timedelta(minutes=1),
 }
 
+
+def check_for_new_data(**context):
+    """
+    Check if new records were inserted.
+    Returns task_id to branch to.
+    """
+    ti = context['ti']
+    rows_inserted = ti.xcom_pull(task_ids='ingest_csv_to_mysql')
+    
+    if rows_inserted is None or rows_inserted == 0:
+        print("No new records detected - skipping to no_change notification")
+        return 'notify_no_change'
+    
+    print(f"New records detected ({rows_inserted}) - continuing pipeline")
+    return 'validate_data'
+
+
 # Define the DAG
 with DAG(
     dag_id='flight_price_analysis',
     default_args=default_args,
     description='ETL pipeline for Bangladesh flight price analysis',
-    schedule_interval='@daily',
+    schedule_interval=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
+    is_paused_upon_creation=True,  # Prevents auto-trigger on startup
     tags=['flight', 'etl', 'analytics'],
 ) as dag:
 
@@ -55,34 +72,69 @@ with DAG(
         python_callable=ingest_csv_to_mysql,
     )
 
-    # Task 2: Validate Data
+    # Task 2: Branch based on whether new data was ingested
+    branch_task = BranchPythonOperator(
+        task_id='check_for_new_data',
+        python_callable=check_for_new_data,
+        provide_context=True,
+    )
+
+    # Task 3: Validate Data (only if new data)
     validate_task = PythonOperator(
         task_id='validate_data',
         python_callable=validate_data,
     )
 
-    # Task 3: Compute KPIs
+    # Task 4: Compute KPIs
     transform_task = PythonOperator(
         task_id='compute_kpis',
         python_callable=compute_kpis,
     )
 
-    # Task 4: Load to PostgreSQL
+    # Task 5: Load to PostgreSQL
     load_task = PythonOperator(
         task_id='load_to_postgres',
         python_callable=load_to_postgres,
     )
 
-    # Task 5: Notify on success
+    # Task 6a: Notify on success (after full processing)
     notify_success = EmailOperator(
         task_id='notify_success',
         to=email_recipients,
-        subject='[Airflow] flight_price_analysis succeeded',
+        subject='[Airflow] flight_price_analysis - New Data Processed',
         html_content="""
-                <h3>DAG Succeeded</h3>
-                <p>The DAG 'flight_price_analysis' completed successfully on {{ ds }}.</p>
-            """,
+            <h3>DAG Succeeded - New Data Processed</h3>
+            <p>The DAG 'flight_price_analysis' completed successfully on {{ ds }}.</p>
+            <p>New records were ingested and processed through the full pipeline.</p>
+        """,
     )
 
-    # Define task dependencies using chain for clarity
-    chain(start, ingest_task, validate_task, transform_task, load_task, notify_success)
+    # Task 6b: Notify when no changes (skip processing)
+    notify_no_change = EmailOperator(
+        task_id='notify_no_change',
+        to=email_recipients,
+        subject='[Airflow] flight_price_analysis - No New Data',
+        html_content="""
+            <h3>DAG Completed - No Changes</h3>
+            <p>The DAG 'flight_price_analysis' ran on {{ ds }} but no new data was detected.</p>
+            <p>The CSV file contains the same records as the database. No processing was performed.</p>
+        """,
+    )
+
+    # End task to join branches
+    end = DummyOperator(
+        task_id='end',
+        trigger_rule='none_failed_min_one_success',
+    )
+
+    # Define task dependencies
+    # Path 1 (new data): start -> ingest -> branch -> validate -> transform -> load -> notify_success -> end
+    # Path 2 (no change): start -> ingest -> branch -> notify_no_change -> end
+    
+    start >> ingest_task >> branch_task
+    
+    # Branch 1: Process new data
+    branch_task >> validate_task >> transform_task >> load_task >> notify_success >> end
+    
+    # Branch 2: No new data, skip to notification
+    branch_task >> notify_no_change >> end

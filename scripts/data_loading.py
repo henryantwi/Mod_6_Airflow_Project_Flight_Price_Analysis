@@ -63,6 +63,19 @@ def ensure_postgres_table_exists(engine):
     );
     """
     
+    # Add record_hash column if it doesn't exist (migration for existing tables)
+    add_column_sql = """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'flight_prices' AND column_name = 'record_hash'
+        ) THEN
+            ALTER TABLE flight_prices ADD COLUMN record_hash VARCHAR(64);
+        END IF;
+    END $$;
+    """
+    
     # Add unique constraint if it doesn't exist
     add_constraint_sql = """
     DO $$
@@ -78,6 +91,7 @@ def ensure_postgres_table_exists(engine):
     
     with engine.begin() as conn:
         conn.execute(text(create_sql))
+        conn.execute(text(add_column_sql))  # Add column first
         conn.execute(text(add_constraint_sql))
 
 
@@ -92,6 +106,13 @@ def batch_insert_postgres(df, engine):
     
     df_clean = df[columns].copy()
     df_clean = df_clean.where(pd.notnull(df_clean), None)
+    
+    # Convert is_peak_season from MySQL TINYINT (0/1) to Python bool
+    if 'is_peak_season' in df_clean.columns:
+        df_clean['is_peak_season'] = df_clean['is_peak_season'].apply(
+            lambda x: bool(x) if x is not None else None
+        )
+    
     records = df_clean.to_dict('records')
     
     chunk_size = 1000

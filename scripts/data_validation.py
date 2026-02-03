@@ -34,8 +34,10 @@ def get_validated_hashes(engine):
         return set()
 
 
+
 def ensure_validated_table_exists(engine):
-    """Create validated table if it doesn't exist."""
+    """Create validated table if it doesn't exist, and ensure record_hash column exists."""
+    # First, create table if not exists
     create_sql = """
     CREATE TABLE IF NOT EXISTS flight_prices_validated (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,8 +64,38 @@ def ensure_validated_table_exists(engine):
         UNIQUE KEY unique_record (record_hash)
     );
     """
+    
     with engine.begin() as conn:
         conn.execute(text(create_sql))
+        
+        # Check if record_hash column exists
+        check_column = """
+        SELECT COUNT(*) FROM information_schema.COLUMNS 
+        WHERE TABLE_SCHEMA = 'staging' 
+        AND TABLE_NAME = 'flight_prices_validated' 
+        AND COLUMN_NAME = 'record_hash';
+        """
+        result = conn.execute(text(check_column)).scalar()
+        
+        if result == 0:
+            logger.info("Adding missing record_hash column...")
+            conn.execute(text("ALTER TABLE flight_prices_validated ADD COLUMN record_hash VARCHAR(64);"))
+            
+        # Check if unique index exists
+        check_index = """
+        SELECT COUNT(*) FROM information_schema.STATISTICS 
+        WHERE TABLE_SCHEMA = 'staging' 
+        AND TABLE_NAME = 'flight_prices_validated' 
+        AND INDEX_NAME = 'unique_record';
+        """
+        result = conn.execute(text(check_index)).scalar()
+        
+        if result == 0:
+            logger.info("Adding missing unique index...")
+            try:
+                conn.execute(text("ALTER TABLE flight_prices_validated ADD UNIQUE INDEX unique_record (record_hash);"))
+            except Exception as e:
+                logger.info(f"Could not add index: {e}")
 
 
 def batch_insert_validated(df, engine):
@@ -71,11 +103,21 @@ def batch_insert_validated(df, engine):
     if df.empty:
         return 0
     
-    columns = [col for col in df.columns if col != 'id']
+    # Columns that exist in flight_prices_validated table
+    valid_columns = [
+        'record_hash', 'airline', 'source', 'source_name', 'destination', 
+        'destination_name', 'departure_datetime', 'arrival_datetime', 
+        'duration_hrs', 'stopovers', 'aircraft_type', 'class', 'booking_source',
+        'base_fare_bdt', 'tax_surcharge_bdt', 'total_fare_bdt', 'seasonality',
+        'days_before_departure', 'is_peak_season'
+    ]
+    
+    # Only use columns that exist in both DataFrame and validated table
+    columns = [col for col in df.columns if col in valid_columns]
     escaped_columns = [f'`{col}`' for col in columns]
     column_names = ', '.join(escaped_columns)
     
-    df_clean = df.copy()
+    df_clean = df[columns].copy()
     df_clean = df_clean.where(pd.notnull(df_clean), None)
     records = df_clean.to_dict('records')
     

@@ -1,80 +1,58 @@
-# Airflow Project: Flight Price Analysis (Module Lab 3)
+# Flight Price Analysis Pipeline
 
-This project implements the end-to-end data pipeline requirements for **Module Lab 3**. It analyzes flight price data for Bangladesh using Apache Airflow, MySQL, and PostgreSQL.
+An Airflow-based data pipeline that processes flight price data for Bangladesh. Takes raw CSV data, cleans it up in MySQL, and loads analytics into PostgreSQL.
 
-## Objective
-**Goal:** Develop an end-to-end data pipeline using Apache Airflow to process and analyze flight price data for Bangladesh.
-**Implementation:** This project ingests raw CSV data, validates and transforms it, computes key performance indicators (KPIs), and stores the final results in a PostgreSQL analytics database.
+The pipeline includes smart duplicate detection using hashing and conditional branching to skip processing when no new data is available.
 
-## Technologies Used
-- **Orchestration:** Apache Airflow
-- **Staging Database:** MySQL
-- **Analytics Database:** PostgreSQL
-- **Data Processing:** Python (Pandas)
-- **Source:** [Flight Price Dataset of Bangladesh (Kaggle)](https://www.kaggle.com/datasets/mahatiratusher/flight-price-dataset-of-bangladesh) (CSV)
+## What it does
+Processes flight price data through multiple stages - ingestion with duplicate detection, validation, transformation, and loading. Calculates metrics like average fares by airline, seasonal pricing patterns, and popular routes. Sends email notifications on completion.
 
-## Pipeline Components & Implementation
+## Tech Stack
+- Apache Airflow for orchestration
+- MySQL for staging
+- PostgreSQL for analytics
+- Python & Pandas for processing
+- Dataset from [Kaggle](https://www.kaggle.com/datasets/mahatiratusher/flight-price-dataset-of-bangladesh)
 
-The Airflow DAG `flight_price_analysis` orchestrates the following four stages, mapping directly to the lab requirements:
+## Pipeline Flow
 
-### 1. Data Ingestion
-**Requirement:** Load CSV data into a staging table in MySQL.
-**Implementation:** 
-- **Script:** `scripts/data_ingestion.py`
-- **Task:** `ingest_csv_to_mysql`
-- Reads `Flight_Price_Dataset_of_Bangladesh.csv` from the `data/` directory.
-- Standardizes column names and loads raw data into the MySQL table `flight_prices_raw`.
+The DAG uses branching logic to skip processing if no new data is found:
 
-### 2. Data Validation
-**Requirement:** Ensure columns exist, handle nulls, validate types, and flag inconsistencies.
-**Implementation:**
-- **Script:** `scripts/data_validation.py`
-- **Task:** `validate_data`
-- **Checks Performed:**
-  - Verifies existence of columns: `airline`, `source`, `destination`, `base_fare`, `taxes`, `total_fare`.
-  - Drops rows with missing critical data (airline/source/dest).
-  - Fills missing numeric values with 0.
-  - Enforces numeric types and ensures `total_fare >= base_fare`.
-  - Enriches data with `is_peak_season` flag based on keywords (e.g., 'Eid', 'Winter') to support seasonal analysis.
-- **Output:** Cleaned data stored in MySQL table `flight_prices_validated`.
+**1. Ingest CSV → MySQL** (`data_ingestion.py`)
+- Uses SHA-256 hashing to detect duplicate records
+- Only inserts new records into `flight_prices_raw`
+- Returns count of new rows inserted
 
-### 3. Data Transformation & KPI Computation
-**Requirement:** Calculate Total Fare and compute specific KPIs (Avg Fare, Seasonal Variation, Booking Counts, Popular Routes).
-**Implementation:**
-- **Script:** `scripts/data_transformation.py`
-- **Task:** `compute_kpis`
-- **KPIs Computed:**
-  1.  **Average Fare by Airline:** Aggregates base, tax, and total fares per airline.
-  2.  **Seasonal Fare Variation:** Compares average fares between Peak and Non-Peak seasons.
-  3.  **Booking Count by Airline:** Counts total bookings and breakdowns by class (Economy, Business, etc.).
-  4.  **Most Popular Routes:** Identifies top source-destination pairs by booking volume.
-- **Output:** KPI tables written directly to the PostgreSQL analytics database.
+**2. Check for New Data** (branch)
+- If new rows > 0: continues to validation
+- If no new data: skips to email notification
 
-### 4. Data Loading into PostgreSQL
-**Requirement:** Transfer enriched data to PostgreSQL with minimal latency.
-**Implementation:**
-- **Script:** `scripts/data_loading.py`
-- **Task:** `load_to_postgres`
-- Transfers the fully validated and enriched dataset from MySQL to the PostgreSQL table `flight_prices` for ad-hoc querying.
+**3. Validate Data** (`data_validation.py`)
+- Checks required columns and drops invalid rows
+- Fills missing fare values with 0
+- Adds `is_peak_season` flag for Eid/Winter/Hajj periods
 
----
+**4. Compute KPIs** (`data_transformation.py`)
+- Average fare by airline
+- Seasonal price variations
+- Booking counts by airline and class
+- Top 20 popular routes
 
-## How to Run
+**5. Load to PostgreSQL** (`data_loading.py`)
+- Moves validated data to PostgreSQL analytics DB
 
-1.  **Start Services:**
-    ```bash
-    docker-compose up -d
-    ```
-    This launches Airflow, MySQL, and PostgreSQL.
+**6. Email Notification**
+- Success email if new data was processed
+- No-change email if no new records found
 
-2.  **Access Airflow:**
-    - URL: http://localhost:8080
-    - User/Pass: `admin` / `admin`
-    - Trigger the `flight_price_analysis` DAG.
+## Running the Pipeline
 
-3.  **Check Results:**
-    Connect to the PostgreSQL database to view the `flight_prices` table and KPI views.
+```bash
+docker-compose up -d
+```
 
-## Documentation
-A comprehensive report covering the pipeline architecture, DAG details, and challenges is available in:
-- `docs/pipeline_report.md`
+Access Airflow at http://localhost:8080 (admin/admin). The DAG is set to manual trigger only (no schedule).
+
+Email notifications require setting `TO_USER_EMAIL_1` in your `.env` file.
+
+Results are in the PostgreSQL analytics database - check the `flight_prices` table and KPI tables.

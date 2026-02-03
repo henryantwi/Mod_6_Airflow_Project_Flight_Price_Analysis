@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS flight_prices_raw (
 -- Validated flight prices table
 CREATE TABLE IF NOT EXISTS flight_prices_validated (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    record_hash VARCHAR(64),
     airline VARCHAR(100) NOT NULL,
     source VARCHAR(10) NOT NULL,
     source_name VARCHAR(200),
@@ -48,5 +49,6 @@ CREATE TABLE IF NOT EXISTS flight_prices_validated (
     seasonality VARCHAR(50),
     days_before_departure INT,
     is_peak_season BOOLEAN DEFAULT FALSE,
-    validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    validated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_record (record_hash)
 );
