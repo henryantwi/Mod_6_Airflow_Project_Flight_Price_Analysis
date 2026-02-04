@@ -48,7 +48,7 @@ The DAG uses branching logic to skip processing if no new data is found:
 ## Running the Pipeline
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 Access Airflow at http://localhost:8080 (admin/admin). The DAG is set to manual trigger only (no schedule).

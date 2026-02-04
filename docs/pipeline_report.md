@@ -92,17 +92,99 @@ The DAG uses branching to optimize performance:
 - Recalculates total_fare if missing: `base_fare + tax_surcharge`
 - Removes negative fares and invalid records where `total_fare < base_fare`
 
-## Issues Encountered
+## Challenges Encountered & Solutions
 
-**Avoiding duplicate processing** - Initially the pipeline would reprocess all CSV data every run. Added hash-based duplicate detection using SHA-256 of key fields. Now only new records trigger the full pipeline.
+### 1. Slow Pipeline Performance (~1:21 per run)
+**Problem**: Pipeline took 1 minute 21 seconds even when no data changed.
 
-**Wasted processing on unchanged data** - Added branching logic so the DAG skips validation/transformation/loading if ingestion finds zero new records.
+**Solution**: Implemented incremental processing:
+- Added SHA-256 hash generation for record deduplication
+- Changed from `if_exists='replace'` to UPSERT logic
+- Only process NEW records by comparing hashes against existing database
 
-**Missing total fares** - Some records had base and tax but no total. Fixed by adding them together in validation.
+**Result**: Pipeline time reduced to ~48 seconds (40% improvement).
 
-**Cross-database transfers** - Used SQLAlchemy to read from MySQL and write to PostgreSQL with Pandas dataframes.
+---
 
-**Email notifications** - Added email alerts for both success and no-change scenarios. Configured via environment variable `TO_USER_EMAIL_1`.
+### 2. Row-by-Row Hash Generation Bottleneck
+**Problem**: `df.apply(generate_hash, axis=1)` was extremely slow (~60 seconds for 57K rows).
+
+**Solution**: Vectorized string concatenation:
+```python
+key_string = df['col1'] + '|' + df['col2'] + '|' + ...
+df['hash'] = key_string.apply(lambda x: hashlib.sha256(x.encode()).hexdigest())
+```
+**Result**: Hash generation reduced to ~1 second.
+
+---
+
+### 3. Missing `record_hash` Column in Existing Tables
+**Problem**: Tables created before incremental processing was added lacked the `record_hash` column, causing `Unknown column` errors.
+
+**Solution**: Added migration logic to check and add missing columns:
+```sql
+IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE column_name = 'record_hash')
+THEN ALTER TABLE ADD COLUMN record_hash VARCHAR(64);
+```
+
+---
+
+### 4. PostgreSQL Boolean Type Mismatch
+**Problem**: MySQL stores booleans as `TINYINT(1)` (0/1), but PostgreSQL expects `TRUE`/`FALSE`. Insert failed with `column is of type boolean but expression is of type integer`.
+
+**Solution**: Added explicit conversion before PostgreSQL insert:
+```python
+if 'is_peak_season' in df.columns:
+    df['is_peak_season'] = df['is_peak_season'].apply(lambda x: bool(x) if x is not None else None)
+```
+
+---
+
+### 5. Environment Variables Not Loaded in Docker
+**Problem**: Email recipient was empty in container (`['']`).
+
+**Solution**: Added `env_file` directive to docker-compose.yml:
+```yaml
+x-airflow-common:
+  env_file:
+    - .env
+  environment:
+    - TO_USER_EMAIL_1=${TO_USER_EMAIL_1}
+```
+
+---
+
+### 6. DAG Column Mismatch Between Tables
+**Problem**: Validation insert was including `created_at` and `updated_at` columns from raw table, which don't exist in validated table.
+
+**Solution**: Explicitly defined valid columns for each target table instead of using all DataFrame columns.
+
+---
+
+### 7. ShortCircuitOperator Skipping Notification
+**Problem**: When using `ShortCircuitOperator` for no-data scenarios, the notification task was also getting skipped.
+
+**Solution**: Replaced with `BranchPythonOperator` to create explicit paths:
+- Path 1: New data → full processing → success email
+- Path 2: No change → skip processing → no-change email
+
+---
+
+### 8. NaN Values Causing SQL Errors
+**Problem**: CSV with missing numeric values caused `Unknown column 'nan'` error because pandas NaN was converted to string "nan" instead of NULL.
+
+**Solution**: Added explicit NaN check before SQL conversion:
+```python
+elif isinstance(val, float) and (val != val):  # NaN != NaN is True
+    escaped_values.append('NULL')
+```
+
+---
+
+### 9. Wasted Processing on Unchanged Data
+**Problem**: Full pipeline ran even when CSV data hadn't changed.
+
+**Solution**: Added branching logic so DAG skips validation/transformation/loading if ingestion finds zero new records. Separate email notifications for each scenario.
 
 ## Running It
 

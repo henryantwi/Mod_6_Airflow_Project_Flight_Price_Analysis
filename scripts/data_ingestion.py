@@ -104,6 +104,8 @@ def upsert_to_mysql(df, engine, table_name):
                     val = record.get(col)
                     if val is None:
                         escaped_values.append('NULL')
+                    elif isinstance(val, float) and (val != val):  # NaN check (NaN != NaN is True)
+                        escaped_values.append('NULL')
                     elif isinstance(val, str):
                         escaped_val = val.replace("'", "''")
                         escaped_values.append(f"'{escaped_val}'")
