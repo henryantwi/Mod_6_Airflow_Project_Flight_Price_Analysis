@@ -26,7 +26,7 @@ x-airflow-common: &airflow-common
     # Email recipient for DAG notifications
     - TO_USER_EMAIL_1=${TO_USER_EMAIL_1}
     - _PIP_ADDITIONAL_REQUIREMENTS=pandas numpy pymysql psycopg2-binary sqlalchemy python-dotenv
-  volumes:
+  volumes:  
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
