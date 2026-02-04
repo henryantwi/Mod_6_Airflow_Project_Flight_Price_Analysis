@@ -56,7 +56,7 @@ with DAG(
     dag_id='flight_price_analysis',
     default_args=default_args,
     description='ETL pipeline for Bangladesh flight price analysis',
-    schedule_interval=None,
+    schedule_interval='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
     is_paused_upon_creation=True,  # Prevents auto-trigger on startup
