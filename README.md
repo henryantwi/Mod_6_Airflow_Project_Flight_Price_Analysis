@@ -14,6 +14,10 @@ Processes flight price data through multiple stages - ingestion with duplicate d
 - Python & Pandas for processing
 - Dataset from [Kaggle](https://www.kaggle.com/datasets/mahatiratusher/flight-price-dataset-of-bangladesh)
 
+## Architecture
+
+![Architecture Diagram](architecture_diagram.png)
+
 ## Pipeline Flow
 
 The DAG uses branching logic to skip processing if no new data is found:

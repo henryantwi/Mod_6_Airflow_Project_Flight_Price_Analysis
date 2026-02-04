@@ -17,7 +17,7 @@ def compute_kpis():
     mysql_engine = create_engine(
         "mysql+pymysql://staging_user:staging_password@mysql:3306/staging"
     )
-    pg_engine = create_engine(
+    pg_engine = create_engine(  
         "postgresql+psycopg2://analytics_user:analytics_password@postgres_analytics:5432/analytics"
     )
     logger.info(f"⏱️ STEP 1 - DB connections: {time.time() - step_start:.2f}s")
