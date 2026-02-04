@@ -16,6 +16,7 @@ Processes flight price data through multiple stages - ingestion with duplicate d
 
 ## Architecture
 
+```mermaid
 flowchart LR
     CSV["CSV File Source<br/>(Kaggle)"] --> INGEST["Ingestion<br/>(Python/SQLAlchemy)"]
     INGEST --> MYSQL_RAW["MySQL Staging<br/>(flight_prices_raw)"]
@@ -32,6 +33,8 @@ flowchart LR
         TRANSFORM
         LOAD
     end
+```
+
 
 
 ## Pipeline Flow
