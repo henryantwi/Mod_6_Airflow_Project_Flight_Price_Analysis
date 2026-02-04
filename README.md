@@ -16,7 +16,23 @@ Processes flight price data through multiple stages - ingestion with duplicate d
 
 ## Architecture
 
-![Architecture Diagram](architecture_diagram.png)
+flowchart LR
+    CSV["CSV File Source<br/>(Kaggle)"] --> INGEST["Ingestion<br/>(Python/SQLAlchemy)"]
+    INGEST --> MYSQL_RAW["MySQL Staging<br/>(flight_prices_raw)"]
+    MYSQL_RAW --> VALIDATE["Validation & Cleaning<br/>(Pandas)"]
+    VALIDATE --> MYSQL_VAL["MySQL Validated<br/>(flight_prices_validated)"]
+    MYSQL_VAL --> TRANSFORM["KPI Transformation<br/>(Pandas)"]
+    MYSQL_VAL --> LOAD["PostgreSQL Load<br/>(Analytics)"]
+    TRANSFORM --> PG_KPI["PostgreSQL KPIs<br/>(4 KPI Tables)"]
+    LOAD --> PG_FINAL["PostgreSQL Data<br/>(flight_prices)"]
+    
+    subgraph Airflow["Airflow Orchestration"]
+        INGEST
+        VALIDATE
+        TRANSFORM
+        LOAD
+    end
+
 
 ## Pipeline Flow
 
